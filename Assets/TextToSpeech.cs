@@ -14,6 +14,11 @@ public class TextToSpeech : MonoBehaviour
     private bool request_started2 = false;
     private string apiKey = APIAccess.apiKey;
     private string url = APIAccess.apiAdress;
+    private EverythingAPI ApiValues => GetComponent<EverythingAPI>();
+    public GameObject targetCanvas;
+    private AudioClip responseClip { get; set; }
+
+    public AudioSource robotAudio;
 
     public void StartTextToSpeech()
     {
@@ -31,7 +36,7 @@ public class TextToSpeech : MonoBehaviour
         JObject jdata = new JObject
         {
             { "model", "tts-1" },
-            { "input", " this little dinosaur reminds me of my grandma..." },
+            { "input", ApiValues.answerReaction },
             { "voice", "nova" },
             { "speed", "0.9" }
         };
@@ -54,6 +59,7 @@ public class TextToSpeech : MonoBehaviour
         else
         {
             byte[] bytes = request.downloadHandler.data;
+            Debug.LogError("We saved de TTS!");
 
             string path = "Assets/testm.mp3";
             File.WriteAllBytes(path, bytes);
@@ -77,10 +83,20 @@ public class TextToSpeech : MonoBehaviour
             AudioSource audioSource = gameObject.AddComponent<AudioSource>();
             audioSource.clip = clip;
             audioSource.Play();
+            StartCoroutine(WaitForAudioEnd(audioSource));
+
         }
         else
         {
             Debug.LogError("Failed to load audio clip from path: " + path);
         }
+    }
+
+    IEnumerator WaitForAudioEnd(AudioSource source)
+    {
+        yield return new WaitWhile(() => source.isPlaying);
+        Texture2D tex = ApiValues.AITexture;
+        targetCanvas.GetComponent<Renderer>().material.mainTexture = tex;
+        
     }
 }

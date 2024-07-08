@@ -6,6 +6,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
+using UnityEngine.Serialization;
 
 
 public class EverythingAPI : MonoBehaviour
@@ -80,7 +81,7 @@ public class EverythingAPI : MonoBehaviour
     [SerializeField] private string role = "Answer like you are positively reacting to an art students work.";
     [SerializeField] private string question = "Look at the given image I've painted. What do you think? Please answer kindly.";
     [SerializeField] private string imgType = "jpg";
-    [SerializeField] public string answer;
+    public string answerReaction;
 
     private bool answered = false;
 
@@ -157,8 +158,8 @@ public class EverythingAPI : MonoBehaviour
             }
             else
             {
-                answer = json["choices"][0]["message"]["content"].ToString();
-                text.text = answer;
+                answerReaction = json["choices"][0]["message"]["content"].ToString();
+                text.text = answerReaction;
                 StartCoroutine(RequestAnswer());
             }
             answered = true;
@@ -174,6 +175,7 @@ public class EverythingAPI : MonoBehaviour
     private string apiUrl = APIAccess.apiUrlTTI;
 
     public GameObject targetCanvas;
+    [HideInInspector] public Texture2D AITexture;
 
     IEnumerator RequestAnswer()
     {
@@ -182,7 +184,7 @@ public class EverythingAPI : MonoBehaviour
         JObject data = new JObject
         {
             { "model", "dall-e-3" },
-            { "prompt", answer },
+            { "prompt", answerReaction },
             { "size", "1024x1024" },
             { "n", 1 }
         };
@@ -235,8 +237,8 @@ public class EverythingAPI : MonoBehaviour
         }
         else
         {
-            Texture2D texture = ((DownloadHandlerTexture)request.downloadHandler).texture;
-            targetCanvas.GetComponent<Renderer>().material.mainTexture = texture;
+            AITexture = ((DownloadHandlerTexture)request.downloadHandler).texture;
+            //targetCanvas.GetComponent<Renderer>().material.mainTexture = AITexture;
             /*byte[] bytes = texture.EncodeToPNG();
             string timeStamp = DateTime.Now.ToString("yyyy.MM.dd.HH.mm.ss");
             System.IO.File.WriteAllBytes(Application.dataPath + "/img" + timeStamp + ".png", bytes);
