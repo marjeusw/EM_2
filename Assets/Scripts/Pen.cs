@@ -48,24 +48,30 @@ public class Pen : MonoBehaviour
 
     private void Draw()
     {
+        Vector3 tipPosition2D = new Vector3(tip.position.x, tip.position.y, 0);
+
         if (currentDrawing == null)
         {
             index = 0;
-            currentDrawing = new GameObject().AddComponent<LineRenderer>();
+            currentDrawing = new GameObject("Drawing").AddComponent<LineRenderer>();
             currentDrawing.material = drawingMaterial;
             currentDrawing.startColor = currentDrawing.endColor = penColors[currentColorIndex];
             currentDrawing.startWidth = currentDrawing.endWidth = penWidth;
             currentDrawing.positionCount = 1;
-            currentDrawing.SetPosition(0, tip.position);
+            currentDrawing.SetPosition(0, tipPosition2D);
         }
         else
         {
             var currentPos = currentDrawing.GetPosition(index);
-            if (Vector3.Distance(currentPos, tip.position) > 0.01f)
+            if (Vector3.Distance(currentPos, tipPosition2D) > 0.01f)
             {
                 index++;
                 currentDrawing.positionCount = index + 1;
-                currentDrawing.SetPosition(index, tip.position);
+                currentDrawing.SetPosition(index, tipPosition2D);
+
+                // Convert v3 to v2
+                Vector2 v2 = new Vector2(tipPosition2D.x, tipPosition2D.y);
+                Debug.Log("Vector2 is: " + v2);
             }
         }
     }
