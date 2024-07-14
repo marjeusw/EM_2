@@ -7,22 +7,23 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
 using UnityEngine.Serialization;
-
+using UnityEditor;
 
 public class EverythingAPI : MonoBehaviour
 {
     // This Text combines the functionities of screenshoting the painting of the user, image-to-text, and text-to-image //
     // Written by Victoria Amelunxen - based on the scripts of Owi Mahn as provided in Moodle //
-
-
-
+    // Contains the TextToSpeech script written by Owi as provided in Moodle //
+    
+    
+    private int ImagesCounter = 0;
     #region Screenshot-taker
 
     // ----------------------------------- Screenshot-Taker Script ------------------------------------------------ //
 
     [SerializeField] private RenderTexture renderTexture;
     private Texture2D texture;
-    private RenderTexture oldTexture = null;
+    private bool waited = true;
 
     // Used only when the image is saved (currently not in use)
     [SerializeField] private string screenshotName = "screenshot"; // currently not in use
@@ -31,7 +32,7 @@ public class EverythingAPI : MonoBehaviour
     // Convert the RenderTexture into a 2D texture to send it via byte arrays (something you can't do with a rendertexture)
     private Texture2D toTexture2D(RenderTexture rTex)
     {
-        Texture2D tex = new Texture2D(225, 225, TextureFormat.RGB24, false);
+        Texture2D tex = new Texture2D(500, 500, TextureFormat.RGB24, false);
         RenderTexture.active = rTex;
         tex.ReadPixels(new Rect(0, 0, rTex.width, rTex.height), 0, 0);
         tex.Apply();
@@ -50,22 +51,32 @@ public class EverythingAPI : MonoBehaviour
         texture = toTexture2D(renderTexture);
         //byte[] bytes = texture.EncodeToJPG();
 
-        if (oldTexture != renderTexture)
+        if (waited && ImagesCounter < 3)
         {
+            waited = false;
+            StartCoroutine(SetConditionAfterDelay(2f)); // delay
+            ImagesCounter++;
             PersistantData.imageData = texture.EncodeToJPG(); // Encode the texture to a JPG
-            oldTexture = renderTexture;
             Debug.LogWarning("Neues Bild!");
             SendImageToText();
-            return;
         }
-
-        Debug.LogWarning("Kein neues Bild zum speichern gefunden!");
+        else
+        {
+            Debug.LogWarning("Kein neues Bild zum speichern gefunden!");
+        }     
 
         // Save the bytes to a file
-        /* byte[] bytes = texture.EncodeToJPG();
-        string filePath = Path.Combine(folderPath, $"{screenshotName}_{System.DateTime.Now:yyyyMMdd_HHmmss}.jpg");
+        byte[] bytes = texture.EncodeToJPG();
+        string filePath = (folderPath + "/"+  $"{screenshotName}_{System.DateTime.Now:yyyyMMdd_HHmmss}.jpg");
         File.WriteAllBytes(filePath, bytes);
-        Debug.Log($"Screenshot saved to: {filePath}"); */
+        Debug.Log($"Screenshot saved to: {filePath}");
+    }
+    private IEnumerator SetConditionAfterDelay(float delay)
+    {
+        Debug.LogWarning("waiting initiated");
+        yield return new WaitForSeconds(delay);
+        waited = true;
+        Debug.LogWarning("waiting completed");
     }
 
     #endregion
@@ -243,10 +254,130 @@ public class EverythingAPI : MonoBehaviour
             string timeStamp = DateTime.Now.ToString("yyyy.MM.dd.HH.mm.ss");
             System.IO.File.WriteAllBytes(Application.dataPath + "/img" + timeStamp + ".png", bytes);
             */
+            StartCoroutine(TextToSpeechCoroutine());
         }
     }
 
     #endregion
 
+    #region TextToSpeech
+
+    // ----------------------------------- Text-To-speech Script (robot voice) ------------------------------------------------ //
+    public string endSpeech = "Alright! You created a lot of amazing art today. I enjoyed keeping you company on your creative journey. But now, it's time to say goodbye. Thank you for painting with me. See you!";
+
+    private IEnumerator TextToSpeechCoroutine()
+    {
+        string requestURL = APIAccess.apiUrlTTS;
+
+        JObject jdata = new JObject
+        {
+            { "model", "tts-1" },
+            { "input", answerReaction },
+            { "voice", "nova" },
+            { "speed", "0.9" }
+        };
+
+        string jsondata = jdata.ToString();
+
+        UnityWebRequest request = new UnityWebRequest(requestURL, "POST");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsondata);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError(request.error);
+        }
+        else
+        {
+            byte[] bytes = request.downloadHandler.data;
+            Debug.LogWarning("We saved de TTS!");
+
+            string path = "Assets/testm.mp3";
+            File.WriteAllBytes(path, bytes);
+
+#if UNITY_EDITOR
+            AssetDatabase.ImportAsset(path);
+            Debug.Log("Saved to " + path);
+#endif
+            PlayAudio(path);
+        }
+    }
+
+    private void PlayAudio(string path)
+    {
+        // Load and play the audio file
+        AudioClip clip = (AudioClip)AssetDatabase.LoadAssetAtPath(path, typeof(AudioClip));
+        if (clip != null)
+        {
+            AudioSource audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.clip = clip;
+            audioSource.Play();
+            StartCoroutine(WaitForAudioEnd(audioSource));
+
+        }
+        else
+        {
+            Debug.LogError("Failed to load audio clip from path: " + path);
+        }
+    }
+
+    IEnumerator WaitForAudioEnd(AudioSource source)
+    {
+        yield return new WaitWhile(() => source.isPlaying);
+        Texture2D tex = AITexture;
+        targetCanvas.GetComponent<Renderer>().material.mainTexture = tex;
+        if(ImagesCounter == 3)
+        {
+            StartCoroutine(TextToSpeechEndCoroutine());
+        }
+    }
+    private IEnumerator TextToSpeechEndCoroutine()
+    {
+        string requestURL = APIAccess.apiUrlTTS;
+
+        JObject jdata = new JObject
+        {
+            { "model", "tts-1" },
+            { "input", endSpeech },
+            { "voice", "nova" },
+            { "speed", "0.9" }
+        };
+
+        string jsondata = jdata.ToString();
+
+        UnityWebRequest request = new UnityWebRequest(requestURL, "POST");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsondata);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        request.SetRequestHeader("Authorization", "Bearer " + apiKey);
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError(request.error);
+        }
+        else
+        {
+            byte[] bytes = request.downloadHandler.data;
+            Debug.LogError("We saved de TTS!");
+
+            string path = "Assets/endAudio.mp3";
+            File.WriteAllBytes(path, bytes);
+
+#if UNITY_EDITOR
+            AssetDatabase.ImportAsset(path);
+            Debug.Log("Saved to " + path);
+#endif
+            PlayAudio(path);
+        }
+    }
+    #endregion
 
 }
